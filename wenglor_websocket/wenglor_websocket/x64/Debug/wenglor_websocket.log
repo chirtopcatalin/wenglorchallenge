@@ -1,0 +1,3 @@
+﻿  websocket.cpp
+C:\Users\asdasd\Desktop\wenglor_challenge\wenglor_websocket\wenglor_websocket\websocket.cpp(74,66): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+  wenglor_websocket.vcxproj -> C:\Users\asdasd\Desktop\wenglor_challenge\wenglor_websocket\x64\Debug\wenglor_websocket.exe
