@@ -1,24 +1,89 @@
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <tchar.h>
+#include <chrono>
+#include <sstream>
+#include <vector>
 
-unsigned short int port = 5555;
+unsigned short int port = 8080;
 PCWSTR address = L"127.0.0.1";
-std::string message = "Hello world!";
-char receiveBuffer[1000];
-int main()
-{
+std::string websiteRoot = "G:/download chrome/poc/public"; //no "/" at the end !!
+
+
+std::string GetContentTypeFromExtension(const std::string& filePath) {
+	size_t dotPos = filePath.find_last_of(".");
+	if (dotPos != std::string::npos) {
+		std::string extension = filePath.substr(dotPos + 1);
+
+		if (extension == "html") {
+			return "text/html";
+		}
+		else if (extension == "css") {
+			return "text/css";
+		}
+		else if (extension == "js") {
+			return "application/javascript";
+		}
+		else if (extension == "jpg" || extension == "jpeg") {
+			return "image/jpeg";
+		}
+		else if (extension == "png") {
+			return "image/png";
+		}
+		else if (extension == "gif") {
+			return "image/gif";
+		}
+		else if (extension == "ico") {
+			return "image/x-icon";
+		}
+		else if (extension == "svg") {
+			return "image/svg+xml";
+		}
+	}
+
+	return "application/octet-stream";
+}
+
+void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
+	std::ifstream t;
+	std::string contentType;
+	std::string fullPath = websiteRoot + requestedResourcePath;
+
+	if (!std::ifstream(fullPath)) {
+		std::string notFoundContent = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
+		contentType = "text/html";
+		std::string header = "HTTP/1.1 404 Not Found\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(notFoundContent.length()) + "\r\n\r\n";
+		send(clientSocket, header.c_str(), header.length(), 0);
+		send(clientSocket, notFoundContent.c_str(), notFoundContent.length(), 0);
+		std::cout << requestedResourcePath << " not found\n";
+		return;
+	}
+	contentType = GetContentTypeFromExtension(requestedResourcePath);
+	t.open(fullPath);
+	std::stringstream resourceContent;
+	resourceContent << t.rdbuf();
+
+	std::string header = "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(resourceContent.str().length()) + "\r\n\r\n";
+
+	send(clientSocket, header.c_str(), header.length(), 0);
+	send(clientSocket, resourceContent.str().c_str(), resourceContent.str().length(), 0);
+	std::cout << requestedResourcePath << " sent\n\n";
+}
+
+SOCKET InitializeSocket() {
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	WSADATA data;
-	std::cout << wVersionRequested << std::endl<<std::endl;
+	std::cout << wVersionRequested << std::endl << std::endl;
 	int status = WSAStartup(wVersionRequested, &data);
 	if (status != 0) {
-		std::cout << "winsock dll not found"<<std::endl;
+		std::cout << "winsock dll not found" << std::endl;
 	}
 	else {
-		std::cout << "winsock found"<<std::endl;
-		std::cout <<"STATUS: " << data.szSystemStatus << std::endl;
+		std::cout << "winsock found" << std::endl;
+		std::cout << "STATUS: " << data.szSystemStatus << std::endl;
 	}
 	SOCKET mySocket = INVALID_SOCKET;
 	mySocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -28,9 +93,12 @@ int main()
 		WSACleanup();
 	}
 	else {
-		std::cout <<"\n\nsocket intialized successfully!" << std::endl;
+		std::cout << "\n\nsocket intialized successfully!" << std::endl;
 	}
+	return mySocket;
+}
 
+bool BindSocket(SOCKET mySocket) {
 	sockaddr_in bindInformation;
 	bindInformation.sin_port = htons(port);
 	bindInformation.sin_family = AF_INET;
@@ -40,26 +108,90 @@ int main()
 		std::cout << "socket binding failed with error code: " << WSAGetLastError() << std::endl;
 		closesocket(mySocket);
 		WSACleanup();
-		return 0;
+		return false;
 	}
 	else {
-		std::cout << "socket successfully bound to port "<< port << std::endl;
+		std::cout << "socket successfully bound to port " << port << std::endl;
+		return true;
 	}
+}
 
-
-	if (listen(mySocket, 4) != 0) {
-		std::cout << "socket can't be put in listening mode "<<WSAGetLastError() << std::endl;
+bool PlaceSocketInListeningMode(SOCKET mySocket) {
+	if (listen(mySocket, 2) != 0) {
+		std::cout << "socket can't be put in listening mode " << WSAGetLastError() << std::endl;
+		return false;
 	}
 	else {
 		std::cout << "socket listening for connections" << std::endl;
+		return true;
 	}
-	SOCKET acceptSocket = accept(mySocket, NULL, NULL);
-	if (acceptSocket == INVALID_SOCKET) {
-		std::cout << "couldn't accept: "<< WSAGetLastError() << std::endl;
-		WSACleanup();
+}
+
+int findFirstOccurrenceAfterIndex(const char charArray[], char targetChar, int startIndex) {
+	int length = strlen(charArray);
+
+	for (int i = startIndex; i < length; i++) {
+		if (charArray[i] == targetChar) {
+			return i;
+		}
 	}
-	else {
-		std::cout << "accepted" << std::endl;
+	return -1;
+}
+
+std::string getRequestedResourceFromRequest(char dataReceivedFromRequest[]) {
+	std::string requestedResource;
+
+	char* startOfRequestLine = strstr(dataReceivedFromRequest, "GET ");
+	if (startOfRequestLine != nullptr) {
+		char* endOfRequestLine = strstr(startOfRequestLine, " HTTP/1.1");
+		if (endOfRequestLine != nullptr) {
+			requestedResource.assign(startOfRequestLine + 4, endOfRequestLine);
+			std::cout << "Requested Resource: " << requestedResource << std::endl;
+		}
+	}
+	return requestedResource;
+}
+
+int main()
+{
+	SOCKET mySocket = InitializeSocket();
+	if (BindSocket(mySocket) == 0) return 0;
+	if (PlaceSocketInListeningMode(mySocket) == 0) return 0;
+
+	while (true) {
+		SOCKET acceptSocket = accept(mySocket, NULL, NULL);
+		if (acceptSocket == INVALID_SOCKET) {
+			std::cout << "couldn't accept: " << WSAGetLastError() << std::endl;
+			WSACleanup();
+		}
+		else {
+			std::cout << "connected" << std::endl;
+		}
+
+
+		while (true) {
+			char dataReceivedFromRequest[2000];
+			int numberOfReceivedBytes = recv(acceptSocket, dataReceivedFromRequest, 1000, 0);
+			if (numberOfReceivedBytes == SOCKET_ERROR || numberOfReceivedBytes == 0) {
+				std::cout << "couldn't receive message: " << WSAGetLastError() << std::endl;
+				break;
+			}
+			else {
+				std::cout << "received " << numberOfReceivedBytes << " bytes" << std::endl;
+			}
+			std::string requestedResourcePath = getRequestedResourceFromRequest(dataReceivedFromRequest);
+
+			if(requestedResourcePath == "/"){
+				sendResource(acceptSocket, "/index.html");
+			}
+			else {
+				sendResource(acceptSocket, requestedResourcePath);
+			}
+			if (strstr(dataReceivedFromRequest, "Connection: keep-alive") == nullptr) {
+				break;
+			}
+		}
+		closesocket(acceptSocket);
 	}
 
 	closesocket(mySocket);
