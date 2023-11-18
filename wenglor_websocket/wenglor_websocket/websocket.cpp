@@ -1,4 +1,5 @@
 #include <iostream>
+#include <any>
 #include <fstream>
 #include <string>
 #include <winsock2.h>
@@ -7,40 +8,36 @@
 #include <chrono>
 #include <sstream>
 #include <vector>
+#include <map>
+#include <string_view>
 
 unsigned short int port = 8080;
 PCWSTR address = L"127.0.0.1";
 std::string websiteRoot = "G:/download chrome/poc/public"; //no "/" at the end !!
 
+// Function that gets the extension of requested file and returns the content type to be put in the http header
+// c++ 17 feature used: string_view - more memory-efficient because the value of the string does not get modified
+std::string GetContentTypeFromExtension(const std::string_view& filePath) {
+	std::any dotPos = filePath.find_last_of(".");
+	if (std::any_cast<size_t>(dotPos) != std::string::npos) {
+		std::string_view extension = filePath.substr(std::any_cast<size_t>(dotPos) + 1);
 
-std::string GetContentTypeFromExtension(const std::string& filePath) {
-	size_t dotPos = filePath.find_last_of(".");
-	if (dotPos != std::string::npos) {
-		std::string extension = filePath.substr(dotPos + 1);
+		std::map<std::string_view, std::string> mp;
+		mp["html"] = "text/html";
+		mp["css"] = "text/css";
+		mp["js"] = "application/javascript";
+		mp["jpg"] = "image/jpeg";
+		mp["jpeg"] = "image/jpeg";
+		mp["png"] = "image/png";
+		mp["gif"] = "image/gif";
+		mp["ico"] = "image/x-icon";
+		mp["svg"] = "image/svg+xml";
 
-		if (extension == "html") {
-			return "text/html";
-		}
-		else if (extension == "css") {
-			return "text/css";
-		}
-		else if (extension == "js") {
-			return "application/javascript";
-		}
-		else if (extension == "jpg" || extension == "jpeg") {
-			return "image/jpeg";
-		}
-		else if (extension == "png") {
-			return "image/png";
-		}
-		else if (extension == "gif") {
-			return "image/gif";
-		}
-		else if (extension == "ico") {
-			return "image/x-icon";
-		}
-		else if (extension == "svg") {
-			return "image/svg+xml";
+		//use of structured bindings
+		for (const auto& [key, value] : mp) {
+			if (key == extension) {
+				return value;
+			}
 		}
 	}
 
@@ -181,7 +178,7 @@ int main()
 			}
 			std::string requestedResourcePath = getRequestedResourceFromRequest(dataReceivedFromRequest);
 
-			if(requestedResourcePath == "/"){
+			if (requestedResourcePath == "/") {
 				sendResource(acceptSocket, "/index.html");
 			}
 			else {
