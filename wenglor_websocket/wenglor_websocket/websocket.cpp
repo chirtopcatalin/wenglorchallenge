@@ -1,19 +1,19 @@
-#include <iostream>
 #include <any>
+#include <chrono>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <string>
+#include <string_view>
+#include <tchar.h>
+#include <vector>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <tchar.h>
-#include <chrono>
-#include <sstream>
-#include <vector>
-#include <map>
-#include <string_view>
 
-unsigned short int port = 8080;
-PCWSTR address = L"127.0.0.1";
-std::string websiteRoot = "G:/download chrome/poc/public"; //no "/" at the end !!
+const unsigned short int port = 8080;
+const PCWSTR address = L"127.0.0.1";
 
 // Function that gets the extension of requested file and returns the content type to be put in the http header
 // c++ 17 feature used: string_view - more memory-efficient because the value of the string does not get modified
@@ -21,8 +21,8 @@ std::string GetContentTypeFromExtension(const std::string_view& filePath) {
 	std::any dotPos = filePath.find_last_of(".");
 	if (std::any_cast<size_t>(dotPos) != std::string::npos) {
 		std::string_view extension = filePath.substr(std::any_cast<size_t>(dotPos) + 1);
-
 		std::map<std::string_view, std::string> mp;
+
 		mp["html"] = "text/html";
 		mp["css"] = "text/css";
 		mp["js"] = "application/javascript";
@@ -40,32 +40,38 @@ std::string GetContentTypeFromExtension(const std::string_view& filePath) {
 			}
 		}
 	}
-
 	return "application/octet-stream";
 }
 
+void sendNotFoundError(SOCKET clientSocket) {
+	std::string notFoundContent = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
+	std::string httpResponseHeader = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(notFoundContent.length()) + "\r\n\r\n";
+	send(clientSocket, httpResponseHeader.c_str(), httpResponseHeader.length(), 0);
+	send(clientSocket, notFoundContent.c_str(), notFoundContent.length(), 0);
+}
+
+// Sends resource from path given in the http request header
 void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
 	std::ifstream t;
-	std::string contentType;
-	std::string fullPath = websiteRoot + requestedResourcePath;
+	std::filesystem::path projectPath = std::filesystem::current_path();
+	std::string fullPath = projectPath.string() + "/public" + requestedResourcePath;
+	std::stringstream resourceContent;
+	std::string httpResponseHeader = "";
 
-	if (!std::ifstream(fullPath)) {
-		std::string notFoundContent = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
-		contentType = "text/html";
-		std::string header = "HTTP/1.1 404 Not Found\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(notFoundContent.length()) + "\r\n\r\n";
-		send(clientSocket, header.c_str(), header.length(), 0);
-		send(clientSocket, notFoundContent.c_str(), notFoundContent.length(), 0);
-		std::cout << requestedResourcePath << " not found\n";
+// if resource is not found - return 404
+	if(!std::filesystem::exists(fullPath)){
+		sendNotFoundError(clientSocket);
+		std::cout << requestedResourcePath << " not found" << std::endl;
 		return;
 	}
-	contentType = GetContentTypeFromExtension(requestedResourcePath);
+
+	std::string contentType = GetContentTypeFromExtension(requestedResourcePath);
 	t.open(fullPath);
-	std::stringstream resourceContent;
 	resourceContent << t.rdbuf();
 
-	std::string header = "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(resourceContent.str().length()) + "\r\n\r\n";
+	httpResponseHeader = "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(resourceContent.str().length()) + "\r\n\r\n";
 
-	send(clientSocket, header.c_str(), header.length(), 0);
+	send(clientSocket, httpResponseHeader.c_str(), httpResponseHeader.length(), 0);
 	send(clientSocket, resourceContent.str().c_str(), resourceContent.str().length(), 0);
 	std::cout << requestedResourcePath << " sent\n\n";
 }
@@ -73,25 +79,26 @@ void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
 SOCKET InitializeSocket() {
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	WSADATA data;
-	std::cout << wVersionRequested << std::endl << std::endl;
 	int status = WSAStartup(wVersionRequested, &data);
+
 	if (status != 0) {
 		std::cout << "winsock dll not found" << std::endl;
+		return INVALID_SOCKET;
 	}
-	else {
-		std::cout << "winsock found" << std::endl;
-		std::cout << "STATUS: " << data.szSystemStatus << std::endl;
-	}
-	SOCKET mySocket = INVALID_SOCKET;
-	mySocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	std::cout << "winsock found" << std::endl;
+	std::cout << "STATUS: " << data.szSystemStatus << std::endl;
+
+	SOCKET mySocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
 	if (mySocket == INVALID_SOCKET) {
 		std::cout << "\n\nsocket initialization failed with error code: " << WSAGetLastError << std::endl;
 		WSACleanup();
+		return INVALID_SOCKET;
 	}
-	else {
-		std::cout << "\n\nsocket intialized successfully!" << std::endl;
-	}
+
+	std::cout << "\n\nsocket intialized successfully!" << std::endl;
+
 	return mySocket;
 }
 
@@ -100,17 +107,18 @@ bool BindSocket(SOCKET mySocket) {
 	bindInformation.sin_port = htons(port);
 	bindInformation.sin_family = AF_INET;
 	InetPton(AF_INET, address, &bindInformation.sin_addr.S_un.S_addr);
+
 	int bindStatus = bind(mySocket, (sockaddr*)&bindInformation, sizeof(bindInformation));
+
 	if (bindStatus == SOCKET_ERROR) {
 		std::cout << "socket binding failed with error code: " << WSAGetLastError() << std::endl;
 		closesocket(mySocket);
 		WSACleanup();
 		return false;
 	}
-	else {
-		std::cout << "socket successfully bound to port " << port << std::endl;
-		return true;
-	}
+
+	std::cout << "socket successfully bound to port " << port << std::endl;
+	return true;
 }
 
 bool PlaceSocketInListeningMode(SOCKET mySocket) {
@@ -118,21 +126,9 @@ bool PlaceSocketInListeningMode(SOCKET mySocket) {
 		std::cout << "socket can't be put in listening mode " << WSAGetLastError() << std::endl;
 		return false;
 	}
-	else {
-		std::cout << "socket listening for connections" << std::endl;
-		return true;
-	}
-}
 
-int findFirstOccurrenceAfterIndex(const char charArray[], char targetChar, int startIndex) {
-	int length = strlen(charArray);
-
-	for (int i = startIndex; i < length; i++) {
-		if (charArray[i] == targetChar) {
-			return i;
-		}
-	}
-	return -1;
+	std::cout << "socket listening for connections" << std::endl;
+	return true;
 }
 
 std::string getRequestedResourceFromRequest(char dataReceivedFromRequest[]) {
@@ -164,7 +160,6 @@ int main()
 		else {
 			std::cout << "connected" << std::endl;
 		}
-
 
 		while (true) {
 			char dataReceivedFromRequest[2000];
