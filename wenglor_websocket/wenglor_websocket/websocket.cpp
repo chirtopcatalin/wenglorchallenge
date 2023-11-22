@@ -1,13 +1,16 @@
 #include <any>
+#include <ctime>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <map>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <tchar.h>
+#include <utility>
 #include <vector>
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -43,9 +46,22 @@ std::string GetContentTypeFromExtension(const std::string_view& filePath) {
 	return "application/octet-stream";
 }
 
+std::string getCurrentTimeHttpFormat() {
+	std::timespec ts;
+	if (std::timespec_get(&ts, TIME_UTC) != 0) {
+		std::tm gmTime;
+		gmtime_s(&gmTime, &ts.tv_sec);
+
+		std::ostringstream oss;
+		oss << std::put_time(&gmTime, "Date: %a, %d %b %Y %H:%M:%S GMT\r\n");
+		return oss.str();
+	}
+	return "Failed to get current time.";
+}
+
 void sendNotFoundError(SOCKET clientSocket) {
 	std::string notFoundContent = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
-	std::string httpResponseHeader = "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(notFoundContent.length()) + "\r\n\r\n";
+	std::string httpResponseHeader = "HTTP/1.1 404 Not Found\r\n" + getCurrentTimeHttpFormat() + "Content-Type: text/html\r\nContent-Length: " + std::to_string(notFoundContent.length()) + "\r\n\r\n";
 	send(clientSocket, httpResponseHeader.c_str(), httpResponseHeader.length(), 0);
 	send(clientSocket, notFoundContent.c_str(), notFoundContent.length(), 0);
 }
@@ -58,8 +74,8 @@ void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
 	std::stringstream resourceContent;
 	std::string httpResponseHeader = "";
 
-// if resource is not found - return 404
-	if(!std::filesystem::exists(fullPath)){
+	// if resource is not found - return 404
+	if (!std::filesystem::exists(fullPath)) {
 		sendNotFoundError(clientSocket);
 		std::cout << requestedResourcePath << " not found" << std::endl;
 		return;
@@ -69,7 +85,7 @@ void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
 	t.open(fullPath);
 	resourceContent << t.rdbuf();
 
-	httpResponseHeader = "HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "\r\nContent-Length: " + std::to_string(resourceContent.str().length()) + "\r\n\r\n";
+	httpResponseHeader = "HTTP/1.1 200 OK\r\n" + getCurrentTimeHttpFormat() + "Content-Type: " + contentType + "\r\nContent-Length: " + std::to_string(resourceContent.str().length()) + "\r\n\r\n";
 
 	send(clientSocket, httpResponseHeader.c_str(), httpResponseHeader.length(), 0);
 	send(clientSocket, resourceContent.str().c_str(), resourceContent.str().length(), 0);
@@ -101,12 +117,12 @@ SOCKET InitializeSocket() {
 
 	return mySocket;
 }
-
+//std::as_const()
 bool BindSocket(SOCKET mySocket) {
 	sockaddr_in bindInformation;
-	bindInformation.sin_port = htons(port);
+	bindInformation.sin_port = htons(std::as_const(port));
 	bindInformation.sin_family = AF_INET;
-	InetPton(AF_INET, address, &bindInformation.sin_addr.S_un.S_addr);
+	InetPton(AF_INET, std::as_const(address), &bindInformation.sin_addr.S_un.S_addr);
 
 	int bindStatus = bind(mySocket, (sockaddr*)&bindInformation, sizeof(bindInformation));
 
@@ -162,15 +178,15 @@ int main()
 		}
 
 		while (true) {
-			char dataReceivedFromRequest[2000];
-			int numberOfReceivedBytes = recv(acceptSocket, dataReceivedFromRequest, 1000, 0);
-			if (numberOfReceivedBytes == SOCKET_ERROR || numberOfReceivedBytes == 0) {
+			char dataReceivedFromRequest[4096];
+			int numberOfReceivedBytes = recv(acceptSocket, dataReceivedFromRequest, 4096, 0);
+			if (numberOfReceivedBytes == SOCKET_ERROR) {
 				std::cout << "couldn't receive message: " << WSAGetLastError() << std::endl;
 				break;
 			}
-			else {
+			/*else {
 				std::cout << "received " << numberOfReceivedBytes << " bytes" << std::endl;
-			}
+			}*/
 			std::string requestedResourcePath = getRequestedResourceFromRequest(dataReceivedFromRequest);
 
 			if (requestedResourcePath == "/") {
@@ -179,13 +195,15 @@ int main()
 			else {
 				sendResource(acceptSocket, requestedResourcePath);
 			}
-			if (strstr(dataReceivedFromRequest, "Connection: keep-alive") == nullptr) {
+			if (strstr(dataReceivedFromRequest, "Connection: keep-alive") == nullptr || numberOfReceivedBytes == 0) {
 				break;
 			}
 		}
 		closesocket(acceptSocket);
+		std::cout << "accept socket closed" << std::endl;
 	}
 
 	closesocket(mySocket);
+	std::cout << "main socket closed" << std::endl;
 	WSACleanup();
 }
