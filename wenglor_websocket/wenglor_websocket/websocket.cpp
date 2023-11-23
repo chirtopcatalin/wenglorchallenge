@@ -46,6 +46,7 @@ std::string GetContentTypeFromExtension(const std::string_view& filePath) {
 	return "application/octet-stream";
 }
 
+// Returns current time in HTTP format
 std::string getCurrentTimeHttpFormat() {
 	std::timespec ts;
 	if (std::timespec_get(&ts, TIME_UTC) != 0) {
@@ -147,6 +148,7 @@ bool PlaceSocketInListeningMode(SOCKET mySocket) {
 	return true;
 }
 
+// Takes all data received in the request and returns the requested resource
 std::string getRequestedResourceFromRequest(char dataReceivedFromRequest[]) {
 	std::string requestedResource;
 
@@ -161,6 +163,19 @@ std::string getRequestedResourceFromRequest(char dataReceivedFromRequest[]) {
 	return requestedResource;
 }
 
+// Accepts connection by creating an accept socket from the listening socket
+SOCKET AcceptConnection(SOCKET listeningSocket) {
+	SOCKET acceptSocket = accept(listeningSocket, NULL, NULL);
+	if (acceptSocket == INVALID_SOCKET) {
+		std::cout << "couldn't accept connection! error code: " << WSAGetLastError() << std::endl;
+		WSACleanup();
+	}
+	else {
+		std::cout << "connected" << std::endl;
+	}
+	return acceptSocket;
+}
+
 int main()
 {
 	SOCKET mySocket = InitializeSocket();
@@ -168,14 +183,7 @@ int main()
 	if (PlaceSocketInListeningMode(mySocket) == 0) return 0;
 
 	while (true) {
-		SOCKET acceptSocket = accept(mySocket, NULL, NULL);
-		if (acceptSocket == INVALID_SOCKET) {
-			std::cout << "couldn't accept: " << WSAGetLastError() << std::endl;
-			WSACleanup();
-		}
-		else {
-			std::cout << "connected" << std::endl;
-		}
+		SOCKET acceptSocket = AcceptConnection(mySocket);
 
 		while (true) {
 			char dataReceivedFromRequest[4096];
