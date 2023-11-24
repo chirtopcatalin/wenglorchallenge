@@ -165,13 +165,14 @@ bool PlaceSocketInListeningMode(SOCKET mySocket) {
 
 // Takes all data received in the request and returns the requested resource
 std::string getRequestedResourceFromRequest(char dataReceivedFromRequest[]) {
-	std::string requestedResource;
+	std::string requestedResource = "";
+	int resourcePathOffset = 4;
 
 	char* startOfRequestLine = strstr(dataReceivedFromRequest, "GET ");
 	if (startOfRequestLine != nullptr) {
 		char* endOfRequestLine = strstr(startOfRequestLine, " HTTP/1.1");
 		if (endOfRequestLine != nullptr) {
-			requestedResource.assign(startOfRequestLine + 4, endOfRequestLine);
+			requestedResource.assign(startOfRequestLine + resourcePathOffset, endOfRequestLine);
 			std::cout << "Requested Resource: " << requestedResource << std::endl;
 		}
 	}
