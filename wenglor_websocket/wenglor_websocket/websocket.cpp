@@ -72,7 +72,7 @@ std::string GetCurrentTimeHttpFormat() {
 		oss << std::put_time(&gm_time, "Date: %a, %d %b %Y %H:%M:%S GMT\r\n");
 		return oss.str();
 	}
-	return "Failed to get current time.";
+	return "";
 }
 
 void SendNotFoundError(SOCKET client_socket) {
