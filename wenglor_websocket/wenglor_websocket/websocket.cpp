@@ -1,7 +1,9 @@
 #include <any>
+#include <algorithm>
 #include <ctime>
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -15,29 +17,42 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-const unsigned short int port = 8080;
-const PCWSTR address = L"127.0.0.1";
+const unsigned short int PORT = 8080;
+const PCWSTR ADDRESS = L"127.0.0.1";
+
+std::map<std::string_view, std::string> extensionMap;
+enum struct ErrorCodes { SOCKET_INITIALIZE_ERROR_CODE = 1,
+						 SOCKET_BIND_ERROR_CODE,
+						 SOCKET_LISTEN_ERROR_CODE};
+
+// Map of file extensions and their content types
+std::map<std::string_view, std::string> CreateExtensionMap() {
+		std::map<std::string_view, std::string> extensionMap;
+
+		extensionMap["html"] = "text/html";
+		extensionMap["css"] = "text/css";
+		extensionMap["js"] = "application/javascript";
+		extensionMap["jpg"] = "image/jpeg";
+		extensionMap["jpeg"] = "image/jpeg";
+		extensionMap["png"] = "image/png";
+		extensionMap["gif"] = "image/gif";
+		extensionMap["ico"] = "image/x-icon";
+		extensionMap["svg"] = "image/svg+xml";
+
+		return extensionMap;
+}
+
+
 
 // Function that gets the extension of requested file and returns the content type to be put in the http header
 // c++ 17 feature used: string_view - more memory-efficient because the value of the string does not get modified
-std::string GetContentTypeFromExtension(const std::string_view& filePath) {
+std::string GetContentTypeFromExtension(const std::string_view& filePath){
 	std::any dotPos = filePath.find_last_of(".");
 	if (std::any_cast<size_t>(dotPos) != std::string::npos) {
 		std::string_view extension = filePath.substr(std::any_cast<size_t>(dotPos) + 1);
-		std::map<std::string_view, std::string> mp;
-
-		mp["html"] = "text/html";
-		mp["css"] = "text/css";
-		mp["js"] = "application/javascript";
-		mp["jpg"] = "image/jpeg";
-		mp["jpeg"] = "image/jpeg";
-		mp["png"] = "image/png";
-		mp["gif"] = "image/gif";
-		mp["ico"] = "image/x-icon";
-		mp["svg"] = "image/svg+xml";
 
 		//use of structured bindings
-		for (const auto& [key, value] : mp) {
+		for (const auto& [key, value] : extensionMap) {
 			if (key == extension) {
 				return value;
 			}
@@ -68,7 +83,7 @@ void sendNotFoundError(SOCKET clientSocket) {
 }
 
 // Sends resource from path given in the http request header
-void sendResource(SOCKET clientSocket, std::string requestedResourcePath) {
+void sendResource(SOCKET clientSocket, const std::string& requestedResourcePath) {
 	std::ifstream t;
 	std::filesystem::path projectPath = std::filesystem::current_path();
 	std::string fullPath = projectPath.string() + "/public" + requestedResourcePath;
@@ -121,9 +136,9 @@ SOCKET InitializeSocket() {
 //std::as_const()
 bool BindSocket(SOCKET mySocket) {
 	sockaddr_in bindInformation;
-	bindInformation.sin_port = htons(std::as_const(port));
+	bindInformation.sin_port = htons(std::as_const(PORT));
 	bindInformation.sin_family = AF_INET;
-	InetPton(AF_INET, std::as_const(address), &bindInformation.sin_addr.S_un.S_addr);
+	InetPton(AF_INET, std::as_const(ADDRESS), &bindInformation.sin_addr.S_un.S_addr);
 
 	int bindStatus = bind(mySocket, (sockaddr*)&bindInformation, sizeof(bindInformation));
 
@@ -134,12 +149,12 @@ bool BindSocket(SOCKET mySocket) {
 		return false;
 	}
 
-	std::cout << "socket successfully bound to port " << port << std::endl;
+	std::cout << "socket successfully bound to port " << PORT << std::endl;
 	return true;
 }
 
 bool PlaceSocketInListeningMode(SOCKET mySocket) {
-	if (listen(mySocket, 2) != 0) {
+	if (listen(mySocket, 1) != 0) {
 		std::cout << "socket can't be put in listening mode " << WSAGetLastError() << std::endl;
 		return false;
 	}
@@ -179,8 +194,11 @@ SOCKET AcceptConnection(SOCKET listeningSocket) {
 int main()
 {
 	SOCKET mySocket = InitializeSocket();
-	if (BindSocket(mySocket) == 0) return 0;
-	if (PlaceSocketInListeningMode(mySocket) == 0) return 0;
+	if(mySocket == INVALID_SOCKET) return static_cast<int>(ErrorCodes::SOCKET_INITIALIZE_ERROR_CODE);
+	if (BindSocket(mySocket) == 0) return static_cast<int>(ErrorCodes::SOCKET_BIND_ERROR_CODE);
+	if (PlaceSocketInListeningMode(mySocket) == 0) return static_cast<int>(ErrorCodes::SOCKET_LISTEN_ERROR_CODE);
+
+	extensionMap = CreateExtensionMap();
 
 	while (true) {
 		SOCKET acceptSocket = AcceptConnection(mySocket);
@@ -192,9 +210,9 @@ int main()
 				std::cout << "couldn't receive message: " << WSAGetLastError() << std::endl;
 				break;
 			}
-			/*else {
+			else {
 				std::cout << "received " << numberOfReceivedBytes << " bytes" << std::endl;
-			}*/
+			}
 			std::string requestedResourcePath = getRequestedResourceFromRequest(dataReceivedFromRequest);
 
 			if (requestedResourcePath == "/") {
