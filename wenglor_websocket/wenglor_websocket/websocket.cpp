@@ -214,13 +214,9 @@ int main()
 				std::cout << "received " << numberOfReceivedBytes << " bytes" << std::endl;
 			}
 			std::string requestedResourcePath = getRequestedResourceFromRequest(dataReceivedFromRequest);
+			
+			sendResource(acceptSocket, (requestedResourcePath == "/") ? "/index.html" : requestedResourcePath);
 
-			if (requestedResourcePath == "/") {
-				sendResource(acceptSocket, "/index.html");
-			}
-			else {
-				sendResource(acceptSocket, requestedResourcePath);
-			}
 			if (strstr(dataReceivedFromRequest, "Connection: keep-alive") == nullptr || numberOfReceivedBytes == 0) {
 				break;
 			}
