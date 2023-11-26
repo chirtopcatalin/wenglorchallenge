@@ -155,7 +155,7 @@ bool BindSocket(SOCKET my_socket) {
 
 // Puts the socket in listening mode
 bool PlaceSocketInListeningMode(SOCKET my_socket) {
-	if (listen(my_socket, 3) != 0) {
+	if (listen(my_socket, 1) != 0) {
 		std::cout << "socket can't be put in listening mode " << WSAGetLastError() << std::endl;
 		return false;
 	}
@@ -187,19 +187,36 @@ SOCKET AcceptConnection(SOCKET listening_socket) {
 		std::cout << "couldn't accept connection! error code: " << WSAGetLastError() << std::endl;
 		WSACleanup();
 	}
-	else {
-		std::cout << "connected" << std::endl;
-	}
 	return accept_socket;
 }
 
 // Handles the connection by receiving the request, sending the requested resource and closing the socket
 void HandleConnection(SOCKET accept_socket) {
-	char data_received_from_request[4096];
+	int timeout_ms = 1000; // 1 second
+	const int request_buffer_size = 4096;
+
+	fd_set readSet;
+	FD_ZERO(&readSet);
+	FD_SET(accept_socket, &readSet);
+
+	timeval timeout;
+	timeout.tv_sec = timeout_ms / 1000;
+	timeout.tv_usec = 0;
 
 	while (true) {
-		char data_received_from_request[4096];
-		int number_of_received_bytes = recv(accept_socket, data_received_from_request, 4096, 0);
+		int selectResult = select(0, &readSet, nullptr, nullptr, &timeout);
+
+		if (selectResult == SOCKET_ERROR) {
+			std::cout << "select error: " << WSAGetLastError() << std::endl;
+			break;
+		}
+		else if (selectResult == 0) {
+			// Timeout: No data received within the specified time
+			break;
+		}
+
+		char data_received_from_request[request_buffer_size];
+		int number_of_received_bytes = recv(accept_socket, data_received_from_request, request_buffer_size, 0);
 		if (number_of_received_bytes == SOCKET_ERROR) {
 			std::cout << "couldn't receive message: " << WSAGetLastError() << std::endl;
 			break;
@@ -216,7 +233,6 @@ void HandleConnection(SOCKET accept_socket) {
 		}
 	}
 	closesocket(accept_socket);
-	std::cout << "accept socket closed" << std::endl;
 }
 
 int main()
