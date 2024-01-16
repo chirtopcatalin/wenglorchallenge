@@ -1,20 +1,8 @@
 #include <any>
-#include <algorithm>
-#include <ctime>
-#include <chrono>
 #include <filesystem>
-#include <functional>
 #include <fstream>
 #include <iostream>
-#include <iomanip>
 #include <map>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <tchar.h>
-#include <utility>
-#include <vector>
-#include <winsock2.h>
 #include <ws2tcpip.h>
 
 const unsigned short int PORT = 8080;
@@ -30,19 +18,17 @@ std::map<std::string_view, std::string> CreateExtensionMap() {
 		std::map<std::string_view, std::string> extension_map;
 
 		extension_map["html"] = "text/html";
-		extension_map["css"] = "text/css";
-		extension_map["js"] = "application/javascript";
-		extension_map["jpg"] = "image/jpeg";
+		extension_map["css"]  = "text/css";
+		extension_map["js"]   = "application/javascript";
+		extension_map["jpg"]  = "image/jpeg";
 		extension_map["jpeg"] = "image/jpeg";
-		extension_map["png"] = "image/png";
-		extension_map["gif"] = "image/gif";
-		extension_map["ico"] = "image/x-icon";
-		extension_map["svg"] = "image/svg+xml";
+		extension_map["png"]  = "image/png";
+		extension_map["gif"]  = "image/gif";
+		extension_map["ico"]  = "image/x-icon";
+		extension_map["svg"]  = "image/svg+xml";
 
 		return extension_map;
 }
-
-
 
 // Function that gets the extension of requested file and returns the content type to be put in the http header
 // c++ 17 feature used: string_view - more memory-efficient because the value of the string does not get modified
@@ -131,11 +117,7 @@ SOCKET InitializeSocket() {
 	return my_socket;
 }
 <<<<<<< HEAD
-<<<<<<< HEAD
 
-=======
-//std::as_const()
->>>>>>> parent of 1b2a164 (Remove unnecessary headers)
 // Binds the socket to the address and port
 =======
 //std::as_const()
@@ -201,22 +183,22 @@ void HandleConnection(SOCKET accept_socket) {
 	int timeout_ms = 1000; // 1 second
 	const int request_buffer_size = 4096;
 
-	fd_set readSet;
-	FD_ZERO(&readSet);
-	FD_SET(accept_socket, &readSet);
+	fd_set read_set;
+	FD_ZERO(&read_set);
+	FD_SET(accept_socket, &read_set);
 
 	timeval timeout;
 	timeout.tv_sec = timeout_ms / 1000;
 	timeout.tv_usec = 0;
 
 	while (true) {
-		int selectResult = select(0, &readSet, nullptr, nullptr, &timeout);
+		int select_result = select(0, &read_set, nullptr, nullptr, &timeout);
 
-		if (selectResult == SOCKET_ERROR) {
+		if (select_result == SOCKET_ERROR) {
 			std::cout << "select error: " << WSAGetLastError() << std::endl;
 			break;
 		}
-		else if (selectResult == 0) {
+		else if (select_result == 0) {
 			// Timeout: No data received within the specified time
 			break;
 		}
@@ -276,8 +258,4 @@ int main()
 		closesocket(accept_socket);
 		std::cout << "accept socket closed" << std::endl;
 	}
-
-	closesocket(my_socket);
-	std::cout << "main socket closed" << std::endl;
-	WSACleanup();
 }
