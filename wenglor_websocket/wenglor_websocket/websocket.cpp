@@ -61,7 +61,6 @@ std::string GetCurrentTimeHttpFormat() {
 	return "";
 }
 
-// Sends 404 Not Found error
 void SendNotFoundError(SOCKET client_socket) {
 	std::string not_found_content = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
 	std::string http_response_header = "HTTP/1.1 404 Not Found\r\n" + GetCurrentTimeHttpFormat() + "Content-Type: text/html\r\nContent-Length: " + std::to_string(not_found_content.length()) + "\r\n\r\n";
@@ -95,7 +94,6 @@ void SendResource(SOCKET client_socket, const std::string& requested_resource_pa
 	std::cout << requested_resource_path << " sent\n\n";
 }
 
-// Initializes the listening socket
 SOCKET InitializeSocket() {
 	WORD w_version_requested = MAKEWORD(2, 2);
 	WSADATA data;
@@ -118,8 +116,12 @@ SOCKET InitializeSocket() {
 
 	return my_socket;
 }
+<<<<<<< HEAD
 
 // Binds the socket to the address and port
+=======
+//std::as_const()
+>>>>>>> parent of b910d14 (Add HandleConnection())
 bool BindSocket(SOCKET my_socket) {
 	sockaddr_in bind_information;
 	bind_information.sin_port = htons(std::as_const(PORT));
@@ -139,7 +141,6 @@ bool BindSocket(SOCKET my_socket) {
 	return true;
 }
 
-// Puts the socket in listening mode
 bool PlaceSocketInListeningMode(SOCKET my_socket) {
 	if (listen(my_socket, 1) != 0) {
 		std::cout << "socket can't be put in listening mode " << WSAGetLastError() << std::endl;
@@ -176,6 +177,7 @@ SOCKET AcceptConnection(SOCKET listening_socket) {
 	return accept_socket;
 }
 
+<<<<<<< HEAD
 // Handles the connection by receiving the request, sending the requested resource and closing the socket
 void HandleConnection(SOCKET accept_socket) {
 	int timeout_ms = 1000; // 1 second
@@ -221,6 +223,8 @@ void HandleConnection(SOCKET accept_socket) {
 	closesocket(accept_socket);
 }
 
+=======
+>>>>>>> parent of b910d14 (Add HandleConnection())
 int main()
 {
 	SOCKET my_socket = InitializeSocket();
@@ -232,6 +236,26 @@ int main()
 
 	while (true) {
 		SOCKET accept_socket = AcceptConnection(my_socket);
-		HandleConnection(accept_socket);
+
+		while (true) {
+			char data_received_from_request[4096];
+			int number_of_received_bytes = recv(accept_socket, data_received_from_request, 4096, 0);
+			if (number_of_received_bytes == SOCKET_ERROR) {
+				std::cout << "couldn't receive message: " << WSAGetLastError() << std::endl;
+				break;
+			}
+			else {
+				std::cout << "received " << number_of_received_bytes << " bytes" << std::endl;
+			}
+			std::string requested_resource_path = GetRequestedResourceFromRequest(data_received_from_request);
+			
+			SendResource(accept_socket, (requested_resource_path == "/") ? "/index.html" : requested_resource_path);
+
+			if (strstr(data_received_from_request, "Connection: keep-alive") == nullptr || number_of_received_bytes == 0) {
+				break;
+			}
+		}
+		closesocket(accept_socket);
+		std::cout << "accept socket closed" << std::endl;
 	}
 }
